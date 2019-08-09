@@ -1,26 +1,22 @@
 import numpy as np
 
 
-# Taken from OpenAI Baselines code.
+# Taken from https://github.com/ikostrikov/pytorch-ddpg-naf
 class OrnsteinUhlenbeckActionNoise(object):
-    def __init__(self, mu, sigma, theta=.15, dt=1e-2, x0=None):
-        self.theta = theta
+    def __init__(self, action_dim, scale=0.1, mu=0, theta=0.15, sigma=0.2):
+        self.action_dim = action_dim
+        self.scale = scale
         self.mu = mu
+        self.theta = theta
         self.sigma = sigma
-        self.dt = dt
-        self.x0 = x0
+        self.state = np.ones(self.action_dim) * self.mu
         self.reset()
 
-    def __call__(self):
-        x = (self.x_prev + self.theta * (self.mu - self.x_prev) * self.dt +
-             self.sigma * np.sqrt(self.dt) *
-             np.random.normal(size=self.mu.shape))
-        self.x_prev = x
-        return x
-
     def reset(self):
-        self.x_prev = self.x0 if self.x0 is not None else np.zeros_like(self.mu)
+        self.state = np.ones(self.action_dim) * self.mu
 
-    def __repr__(self):
-        return 'OrnsteinUhlenbeckActionNoise(mu={}, sigma={})'.format(self.mu,
-                                                                      self.sigma)
+    def __call__(self):
+        x = self.state
+        dx = self.theta * (self.mu - x) + self.sigma * np.random.randn(len(x))
+        self.state = x + dx
+        return self.state * self.scale

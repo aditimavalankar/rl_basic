@@ -4,6 +4,30 @@ from numpy import sqrt
 import pdb
 
 
+class LayerNorm(nn.Module):
+    """Taken from https://github.com/ikostrikov/pytorch-ddpg-naf."""
+    def __init__(self, num_features, eps=1e-5, affine=True):
+        super(LayerNorm, self).__init__()
+        self.num_features = num_features
+        self.affine = affine
+        self.eps = eps
+
+        if self.affine:
+            self.gamma = nn.Parameter(torch.Tensor(num_features).uniform_())
+            self.beta = nn.Parameter(torch.zeros(num_features))
+
+    def forward(self, x):
+        shape = [-1] + [1] * (x.dim() - 1)
+        mean = x.view(x.size(0), -1).mean(1).view(*shape)
+        std = x.view(x.size(0), -1).std(1).view(*shape)
+
+        y = (x - mean) / (std + self.eps)
+        if self.affine:
+            shape = [1, -1] + [1] * (x.dim() - 2)
+            y = self.gamma.view(*shape) * y + self.beta.view(*shape)
+        return y
+
+
 class ac_network(nn.Module):
     """The policy and value networks share weights."""
     def __init__(self, input_shape, action_dim):
@@ -73,59 +97,17 @@ class ddpg_critic(nn.Module):
         elif activation == 'relu':
             self.activation = nn.ReLU()
 
-        # self.pre_action_seq = nn.Sequential()
-        # self.post_action_seq = nn.Sequential()
-
         self.input_layer = nn.Linear(input_shape, hidden_layer_size)
-        # nn.init.uniform(self.input_layer.weight, -sqrt(2), sqrt(2))
-        self.input_layer_norm = nn.LayerNorm(hidden_layer_size)
-        # nn.init.uniform_(self.input_layer.weight, -1/sqrt(input_shape),
-        #                  1/sqrt(input_shape))
-        # self.pre_action_seq.add_module('input', self.input_layer)
-        # self.pre_action_seq.add_module('activation0', self.activation)
+        self.input_layer_norm = LayerNorm(hidden_layer_size)
 
         self.hidden = nn.Linear(hidden_layer_size + action_dim, hidden_layer_size)
-        self.hidden_norm = nn.LayerNorm(hidden_layer_size)
-
-        # for i in range(len(hidden_layers) - 2):
-            # self.hidden.append()
-            # nn.init.uniform(self.hidden[-1].weight, -sqrt(2), sqrt(2))
-            # self.hidden_norm.append(nn.LayerNorm(hidden_layers[i + 1]))
-            # nn.init.uniform_(self.hidden.weight,
-            #                  -1/sqrt(hidden_layers[i]),
-            #                  1/sqrt(hidden_layers[i]))
-            # self.pre_action_seq.add_module('hidden'+str(i+1), self.hidden)
-            # self.pre_action_seq.add_module('activation'+str(i+1),
-            #                                self.activation)
-
-        # self.hidden.append(nn.Linear(hidden_layers[-2] + action_dim,
-        #                              hidden_layers[-1]))
-        # nn.init.uniform(self.hidden[-1].weight, -sqrt(2), sqrt(2))
-        # self.hidden_norm.append(nn.LayerNorm(hidden_layers[-1]))
-        # nn.init.uniform_(self.hidden.weight,
-        #                  -1/sqrt(hidden_layers[-1]),
-        #                  1/sqrt(hidden_layers[-1]))
-        # self.post_action_seq.add_module('hidden'+str(len(hidden_layers)),
-        #                                 self.hidden)
-        # self.post_action_seq.add_module('activation'+str(len(hidden_layers)),
-        #                                 self.activation)
+        self.hidden_norm = LayerNorm(hidden_layer_size)
 
         self.final_layer = nn.Linear(hidden_layer_size, output_shape)
-        nn.init.uniform_(self.final_layer.weight, -3e-3, 3e-3)
-        nn.init.uniform_(self.final_layer.bias, -3e-3, 3e-3)
-        # self.post_action_seq.add_module('final', self.final_layer)
-        # post_action_modules.append(nn.Tanh())
-
-        # modules = []
-        # modules.append(nn.Linear(input_shape + action_dim, hidden_layers[0]))
-        # nn.init.uniform_(modules[-1].weight, -3e-3, 3e-3)
-        # modules.append(activation)
-        # for i in range(len(hidden_layers) - 1):
-        #     modules.append(nn.Linear(hidden_layers[i], hidden_layers[i + 1]))
-        #     nn.init.uniform_(modules[-1].weight, -3e-3, 3e-3)
-        #     modules.append(activation)
-        # modules.append(nn.Linear(hidden_layers[-1], output_shape))
-        # self.sequential = nn.Sequential(*modules)
+        # nn.init.uniform_(self.final_layer.weight, -3e-3, 3e-3)
+        # nn.init.uniform_(self.final_layer.bias, -3e-3, 3e-3)
+        self.final_layer.weight.data.mul_(0.1)
+        self.final_layer.bias.data.mul_(0.1)
 
     def forward(self, s, a):
         out = self.input_layer(s)
@@ -135,11 +117,12 @@ class ddpg_critic(nn.Module):
         out = self.hidden_norm(out)
         out = self.activation(out)
         out = self.final_layer(out)
-        # value = self.sequential(torch.cat((s, a), dim=-1))
         return out
 
     def set_weights_like(self, net):
-        self.load_state_dict(net.state_dict())
+        # self.load_state_dict(net.state_dict())
+        for (old_p, new_p) in zip(self.parameters(), net.parameters()):
+            old_p.data.copy_(new_p)
 
     def set_weights(self, state_dict):
         self.load_state_dict(state_dict)
@@ -159,35 +142,18 @@ class ddpg_actor(nn.Module):
         elif activation == 'relu':
             self.activation = nn.ReLU()
 
-        # self.sequential = nn.Sequential()
-
         self.input_layer = nn.Linear(input_shape, hidden_layer_size)
-        self.input_layer_norm = nn.LayerNorm(hidden_layer_size)
-        # nn.init.uniform_(self.input_layer.weight, -1/sqrt(input_shape),
-        #                  1/sqrt(input_shape))
-        # nn.init.uniform(self.input_layer.weight, -sqrt(2), sqrt(2))
-        # self.sequential.add_module('input', self.input_layer)
-        # self.sequential.add_module('activation0', self.activation)
-
-        # for i in range(len(hidden_layers) - 1):
-        #     self.hidden = nn.Linear(hidden_layers[i], hidden_layers[i + 1])
-        #     nn.init.uniform(self.hidden.weight, -sqrt(2), sqrt(2))
-            # nn.init.uniform_(self.hidden.weight,
-            #                  -1/sqrt(hidden_layers[i]),
-            #                  1/sqrt(hidden_layers[i]))
-            # self.sequential.add_module('hidden'+str(i+1), self.hidden)
-            # self.sequential.add_module('activation'+str(i+1), self.activation)
+        self.input_layer_norm = LayerNorm(hidden_layer_size)
 
         self.hidden = nn.Linear(hidden_layer_size, hidden_layer_size)
-        self.hidden_norm = nn.LayerNorm(hidden_layer_size)
+        self.hidden_norm = LayerNorm(hidden_layer_size)
 
         self.final_layer = nn.Linear(hidden_layer_size, output_shape)
-        nn.init.uniform_(self.final_layer.weight, -3e-3, 3e-3)
-        nn.init.uniform_(self.final_layer.bias, -3e-3, 3e-3)
-
-        self.tanh = nn.Tanh()
-        # self.sequential.add_module('final', self.final_layer)
-        # self.sequential.add_module('activation_final', nn.Tanh())
+        # nn.init.uniform_(self.final_layer.weight, -3e-3, 3e-3)
+        # nn.init.uniform_(self.final_layer.bias, -3e-3, 3e-3)
+        self.final_layer.weight.data.mul_(0.1)
+        self.final_layer.bias.data.mul_(0.1)
+        self.final_activation = nn.Tanh()
 
     def forward(self, s):
         out = self.input_layer(s)
@@ -197,7 +163,7 @@ class ddpg_actor(nn.Module):
         out = self.hidden_norm(out)
         out = self.activation(out)
         out = self.final_layer(out)
-        out = self.tanh(out)
+        out = self.final_activation(out)
         return out
 
     def set_weights_like(self, net):
