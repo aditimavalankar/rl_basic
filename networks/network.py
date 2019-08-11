@@ -1,7 +1,5 @@
 import torch.nn as nn
 import torch
-from numpy import sqrt
-import pdb
 
 
 class LayerNorm(nn.Module):
@@ -47,7 +45,6 @@ class ac_network(nn.Module):
         pi = self.pi(out)
         vf = self.vf(out)
         pi = self.tanh(pi)
-        # vf = self.sigmoid(vf)
         return pi, vf
 
     def set_weights(self, state_dict):
@@ -80,7 +77,7 @@ class mlp(nn.Module):
     def forward(self, x):
         return self.sequential(x)
 
-    def set_weights_like(self, net):
+    def hard_update(self, net):
         self.load_state_dict(net.state_dict())
 
     def set_weights(self, state_dict):
@@ -104,8 +101,6 @@ class ddpg_critic(nn.Module):
         self.hidden_norm = LayerNorm(hidden_layer_size)
 
         self.final_layer = nn.Linear(hidden_layer_size, output_shape)
-        # nn.init.uniform_(self.final_layer.weight, -3e-3, 3e-3)
-        # nn.init.uniform_(self.final_layer.bias, -3e-3, 3e-3)
         self.final_layer.weight.data.mul_(0.1)
         self.final_layer.bias.data.mul_(0.1)
 
@@ -119,15 +114,14 @@ class ddpg_critic(nn.Module):
         out = self.final_layer(out)
         return out
 
-    def set_weights_like(self, net):
-        # self.load_state_dict(net.state_dict())
+    def hard_update(self, net):
         for (old_p, new_p) in zip(self.parameters(), net.parameters()):
             old_p.data.copy_(new_p)
 
     def set_weights(self, state_dict):
         self.load_state_dict(state_dict)
 
-    def set_weighted_weights(self, net, tau):
+    def soft_update(self, net, tau):
         for (old_p, new_p) in zip(self.parameters(), net.parameters()):
             old_p.data.copy_(tau * new_p + (1 - tau) * old_p)
 
@@ -149,8 +143,6 @@ class ddpg_actor(nn.Module):
         self.hidden_norm = LayerNorm(hidden_layer_size)
 
         self.final_layer = nn.Linear(hidden_layer_size, output_shape)
-        # nn.init.uniform_(self.final_layer.weight, -3e-3, 3e-3)
-        # nn.init.uniform_(self.final_layer.bias, -3e-3, 3e-3)
         self.final_layer.weight.data.mul_(0.1)
         self.final_layer.bias.data.mul_(0.1)
         self.final_activation = nn.Tanh()
@@ -166,12 +158,13 @@ class ddpg_actor(nn.Module):
         out = self.final_activation(out)
         return out
 
-    def set_weights_like(self, net):
-        self.load_state_dict(net.state_dict())
+    def hard_update(self, net):
+        for (old_p, new_p) in zip(self.parameters(), net.parameters()):
+            old_p.data.copy_(new_p)
 
     def set_weights(self, state_dict):
         self.load_state_dict(state_dict)
 
-    def set_weighted_weights(self, net, tau):
+    def soft_update(self, net, tau):
         for (old_p, new_p) in zip(self.parameters(), net.parameters()):
             old_p.data.copy_(tau * new_p + (1 - tau) * old_p)

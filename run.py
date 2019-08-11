@@ -2,12 +2,7 @@ import gym
 import torch
 import argparse
 from utils.helper import set_global_seed
-# from runningmeanstd import RunningMeanStd
 from algorithms import vanilla_pg, a2c_mc, a2c_critic, a2c_gae, ddpg
-
-
-MEAN_STD = 0
-MIN_MAX = 1
 
 
 parser = argparse.ArgumentParser(description='RL-algorithms')
@@ -65,7 +60,6 @@ def main():
     set_global_seed(args.seed)
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    # device = 'cpu'
 
     args = vars(args)
     args['env'] = env

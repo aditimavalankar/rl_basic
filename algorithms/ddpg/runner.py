@@ -17,12 +17,11 @@ def run(args):
     actor_optimizer = Adam(actor.parameters(), lr=args['actor_lr'])
 
     critic = ddpg_critic(input_shape, 1, action_dim).to(device)
-    # critic = mlp(input_shape, 1, activation='relu').to(device)
     target_critic = ddpg_critic(input_shape, 1, action_dim).to(device)
     critic_optimizer = Adam(critic.parameters(), lr=args['critic_lr'])
 
-    target_actor.set_weights_like(actor)
-    target_critic.set_weights_like(critic)
+    target_actor.hard_update(actor)
+    target_critic.hard_update(critic)
 
     total_steps = 0
     total_episodes = 0
